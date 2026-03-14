@@ -3,12 +3,15 @@ import random
 HEADLESS = True
 NAVIGATION_TIMEOUT = 60_000  # ms
 DELAY_BETWEEN_CATEGORIES = 3  # seconds
-DELAY_BETWEEN_DETAILS_MIN = 2  # seconds
-DELAY_BETWEEN_DETAILS_MAX = 4  # seconds
+
+# Detail scraping concurrency
+DETAIL_WORKERS = 3          # parallel workers
+DETAIL_DELAY_MIN = 1.0      # seconds between requests per worker
+DETAIL_DELAY_MAX = 2.0      # seconds between requests per worker
 
 
 def random_delay() -> float:
-    return random.uniform(DELAY_BETWEEN_DETAILS_MIN, DELAY_BETWEEN_DETAILS_MAX)
+    return random.uniform(DETAIL_DELAY_MIN, DETAIL_DELAY_MAX)
 
 
 CATEGORIES = [

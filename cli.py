@@ -35,6 +35,7 @@ def main():
     details_parser = subparsers.add_parser("details", help="Scrape product details")
     details_parser.add_argument("--category", type=str, default=None, help="Single category slug")
     details_parser.add_argument("--reset-progress", action="store_true", help="Reset progress tracking")
+    details_parser.add_argument("--workers", type=int, default=None, help="Number of parallel workers (default: 3)")
 
     # update-prices
     prices_parser = subparsers.add_parser("update-prices", help="Update only prices in existing listings")
@@ -48,7 +49,7 @@ def main():
         asyncio.run(scrape_listings(categories=categories, use_base=args.base))
     elif args.command == "details":
         categories = get_categories(args.category)
-        asyncio.run(scrape_details(categories=categories, reset=args.reset_progress))
+        asyncio.run(scrape_details(categories=categories, reset=args.reset_progress, workers=args.workers))
     elif args.command == "update-prices":
         categories = get_categories(args.category)
         asyncio.run(scrape_listings(categories=categories, use_base=args.base, prices_only=True))
