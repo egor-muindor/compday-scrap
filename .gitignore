@@ -1,0 +1,7 @@
+data/
+*.egg-info/
+__pycache__/
+.venv/
+.idea/
+.playwright-mcp/
+*.png
