@@ -9,6 +9,7 @@ from scraper.config import (
     CATEGORIES,
     DELAY_BETWEEN_CATEGORIES,
     HEADLESS,
+    LISTING_PAGE_SIZE,
     NAVIGATION_TIMEOUT,
 )
 
@@ -36,12 +37,36 @@ async def _wait_for_items_ready(page, timeout: float = 20) -> bool:
     return False
 
 
-async def scrape_category(page, category: dict, use_base: bool = False) -> list[dict]:
-    url = category["base_url"] if use_base else (category["filtered_url"] or category["base_url"])
-    slug = category["slug"]
-    name = category["name"]
+EXTRACT_ITEMS_JS = """
+    (() => {
+        const items = document.querySelectorAll('#catItems > div.item');
+        const results = [];
+        for (const item of items) {
+            if (getComputedStyle(item).display === 'none') continue;
+            const nameEl = item.querySelector('a.name');
+            const priceEl = item.querySelector('b.actual.price');
+            const descEl = item.querySelector('span.description');
+            results.push({
+                title: nameEl ? nameEl.textContent.trim() : '',
+                price: priceEl ? priceEl.textContent.trim() : '',
+                specs: descEl ? descEl.textContent.trim() : '',
+                url: nameEl ? nameEl.href : '',
+            });
+        }
+        return results;
+    })()
+"""
 
-    logger.info(f"Scraping listing: {name} ({slug}) — {url}")
+
+async def _scrape_page(page) -> list[dict]:
+    """Extract visible items from current page."""
+    return await page.evaluate(EXTRACT_ITEMS_JS)
+
+
+async def _scrape_with_hash(page, category: dict, use_base: bool) -> list[dict]:
+    """Scrape category using hash-fragment filters + 'Все' button."""
+    url = category["base_url"] if use_base else category["filtered_url"]
+    slug = category["slug"]
 
     await page.goto(url, wait_until="networkidle", timeout=NAVIGATION_TIMEOUT)
 
@@ -54,33 +79,68 @@ async def scrape_category(page, category: dict, use_base: bool = False) -> list[
         logger.info(f"Debug HTML saved to {debug_path}")
         return []
 
-    # Click "Все" to show all items on one page
     show_all_btn = await page.query_selector('a[href="#onpage-all"]')
     if show_all_btn:
         logger.info(f"Clicking 'Все' to load all items for {slug}")
         await show_all_btn.click()
         await _wait_for_items_ready(page)
 
-    # Extract only visible items via JS for reliability
-    results = await page.evaluate("""
-        (() => {
-            const items = document.querySelectorAll('#catItems > div.item');
-            const results = [];
-            for (const item of items) {
-                if (getComputedStyle(item).display === 'none') continue;
-                const nameEl = item.querySelector('a.name');
-                const priceEl = item.querySelector('b.actual.price');
-                const descEl = item.querySelector('span.description');
-                results.push({
-                    title: nameEl ? nameEl.textContent.trim() : '',
-                    price: priceEl ? priceEl.textContent.trim() : '',
-                    specs: descEl ? descEl.textContent.trim() : '',
-                    url: nameEl ? nameEl.href : '',
-                });
-            }
-            return results;
-        })()
-    """)
+    return await _scrape_page(page)
+
+
+async def _scrape_with_pagination(page, category: dict, use_base: bool) -> list[dict]:
+    """Scrape category using query-parameter pagination."""
+    base_url = category["base_url"]
+    query_filters = "" if use_base else category.get("query_filters", "")
+    slug = category["slug"]
+    all_results = []
+    page_num = 1
+
+    while True:
+        params = f"?p={page_num}&onpage={LISTING_PAGE_SIZE}"
+        if query_filters:
+            params += f"&{query_filters}"
+        url = base_url + params
+
+        logger.info(f"Page {page_num}: {url}")
+        await page.goto(url, wait_until="networkidle", timeout=NAVIGATION_TIMEOUT)
+
+        if not await _wait_for_items_ready(page, timeout=10):
+            if page_num == 1:
+                logger.warning(f"No items on first page for {slug}")
+            break
+
+        items = await _scrape_page(page)
+        if not items:
+            break
+
+        all_results.extend(items)
+        logger.info(f"Page {page_num}: {len(items)} items (total: {len(all_results)})")
+
+        if len(items) < LISTING_PAGE_SIZE:
+            break
+
+        page_num += 1
+        await asyncio.sleep(DELAY_BETWEEN_CATEGORIES)
+
+    return all_results
+
+
+async def scrape_category(page, category: dict, use_base: bool = False) -> list[dict]:
+    slug = category["slug"]
+    name = category["name"]
+    has_query_filters = category.get("query_filters")
+    has_hash_filters = category.get("filtered_url")
+
+    logger.info(f"Scraping listing: {name} ({slug})")
+
+    if has_query_filters and not use_base:
+        results = await _scrape_with_pagination(page, category, use_base)
+    elif has_hash_filters or use_base:
+        results = await _scrape_with_hash(page, category, use_base)
+    else:
+        # No filters at all — use base URL with pagination
+        results = await _scrape_with_pagination(page, category, use_base)
 
     logger.info(f"Found {len(results)} products in {slug}")
     return results

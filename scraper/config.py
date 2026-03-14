@@ -9,6 +9,9 @@ DETAIL_WORKERS = 3          # parallel workers
 DETAIL_DELAY_MIN = 1.0      # seconds between requests per worker
 DETAIL_DELAY_MAX = 2.0      # seconds between requests per worker
 
+# Pagination for query-param based categories
+LISTING_PAGE_SIZE = 60      # items per page for paginated listing
+
 
 def random_delay() -> float:
     return random.uniform(DETAIL_DELAY_MIN, DETAIL_DELAY_MAX)
@@ -68,5 +71,6 @@ CATEGORIES = [
         "name": "Корпуса",
         "base_url": "https://www.compday.ru/komplektuyuszie/korpusa/",
         "filtered_url": None,
+        "query_filters": "filters%5Bprice%5D%5Bmin%5D=2000&filters%5Bprice%5D%5Bmax%5D=15000&filters%5B110300%5D%5B0%5D=316415&filters%5B110300%5D%5B1%5D=318029&filters%5B110300%5D%5B2%5D=314699&filters%5B110300%5D%5B3%5D=363964",
     },
 ]
